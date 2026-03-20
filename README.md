@@ -1,6 +1,6 @@
-## Guidewire Gig-Worker Parametric Insurance
+## GigGuard Parametric Insurance
 
-Guidewire provides **weekly parametric insurance** to gig workers (delivery drivers) of instant delivery apps such as Zepto, Blinkit, and similar services.
+GigGuard provides **weekly parametric insurance** to gig workers (delivery drivers) of instant delivery apps such as Zepto, Blinkit, and similar services.
 
 Coverage applies when a worker’s ability to earn is impacted by **external, uncontrollable disruptions** (for example: extreme weather, social disruptions, city power outage, cellular/internet outage, or the delivery app itself experiencing an outage).
 
