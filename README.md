@@ -1,4 +1,4 @@
-## GigGuard Insur
+## GigGuard Insure
 
 GigGuard provides **weekly parametric insurance** to gig workers (delivery drivers) of instant delivery apps such as Zepto, Blinkit, and similar services.
 
