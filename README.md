@@ -1,4 +1,4 @@
-## GigGuard Parametric Insurance
+## GigGuard Insur
 
 GigGuard provides **weekly parametric insurance** to gig workers (delivery drivers) of instant delivery apps such as Zepto, Blinkit, and similar services.
 
@@ -146,9 +146,7 @@ This project is designed so that early prototypes can use:
 
 ## End-to-End Flow Signals to Weekly Payouts)
 
-![End-to-End Flow Diagram](./assets/end-to-end-flow.jpg)
-
-
+End-to-End Flow Diagram
 
 - Backend API: claim ingestion, evidence collection, grading orchestration, and payout triggering (implementation-specific)
 - Risk/Fraud models: anomaly detection + weekly risk scoring (AI/ML stack implementation-specific)
