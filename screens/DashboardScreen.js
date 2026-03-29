@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-export default function DashboardScreen({ route }) {
+
+export default function DashboardScreen({ route, navigation }) {
   const { userId } = route.params;
 
   return (
@@ -22,6 +23,21 @@ export default function DashboardScreen({ route }) {
         <Text style={styles.cardLabel}>Total paid out</Text>
         <Text style={styles.cardValue}>₹0</Text>
       </View>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate('Policy', { userId })}
+      >
+        <Text style={styles.buttonText}>Buy a policy</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: '#dc2626', marginTop: 8 }]}
+        onPress={() => navigation.navigate('Claim', { userId })}
+      >
+        <Text style={styles.buttonText}>File a claim</Text>
+      </TouchableOpacity>
+
     </View>
   );
 }
@@ -61,5 +77,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  button: {
+    backgroundColor: '#2563eb',
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

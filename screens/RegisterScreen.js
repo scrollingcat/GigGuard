@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert,
@@ -50,6 +51,8 @@ export default function RegisterScreen({ route, navigation }) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      await AsyncStorage.setItem('userId', userId);
       navigation.replace('Dashboard', { userId });
     } catch (e) {
       Alert.alert('Error', e.message);

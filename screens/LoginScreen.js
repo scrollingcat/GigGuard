@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert
@@ -65,10 +66,11 @@ export default function LoginScreen({navigation}) {
       );
       const data = await res.json();
       if (data.idToken) {
-       navigation.replace('Register', { 
-        userId: data.localId, 
-        phone: '+91' + phone 
-      });
+       await AsyncStorage.setItem('userId', data.localId);
+        navigation.replace('Register', { 
+          userId: data.localId, 
+          phone: '+91' + phone 
+        });
       } else {
         Alert.alert('Wrong OTP', data.error?.message || 'Verification failed');
       }
