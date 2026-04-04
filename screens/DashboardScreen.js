@@ -237,6 +237,19 @@ export default function DashboardScreen({ route, navigation }) {
               </View>
             )}
 
+            {/* Premium modifier indicator */}
+            {(worker?.premiumModifier || 1.0) > 1.0 && (
+              <View style={styles.modifierCard}>
+                <Text style={styles.modifierLabel}>Premium modifier</Text>
+                <Text style={styles.modifierValue}>
+                  {(worker.premiumModifier).toFixed(2)}x
+                </Text>
+                <Text style={styles.modifierHint}>
+                  Your plan prices are adjusted due to recent platform activity
+                </Text>
+              </View>
+            )}
+
             {/* Stats row */}
             <View style={styles.statsRow}>
               <View style={styles.statCard}>
@@ -440,6 +453,21 @@ const styles = StyleSheet.create({
     paddingVertical: 10, borderRadius: 8,
   },
   buyButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+
+  modifierCard: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modifierLabel: { fontSize: 12, color: '#92400e', fontWeight: '600' },
+  modifierValue: { fontSize: 18, fontWeight: '700', color: '#b45309' },
+  modifierHint: { fontSize: 11, color: '#92400e', flex: 1 },
 
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statCard: {

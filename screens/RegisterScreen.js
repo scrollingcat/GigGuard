@@ -58,6 +58,7 @@ export default function RegisterScreen({ route, navigation }) {
         riskScore:        50,
         totalClaims:      0,
         totalPaidOut:     0,
+        premiumModifier:  1.0,
         isActive:         true,
         createdAt:        serverTimestamp(),
         updatedAt:        serverTimestamp(),
