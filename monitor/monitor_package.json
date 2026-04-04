@@ -2,10 +2,10 @@
   "name": "gigguard-monitor",
   "version": "1.0.0",
   "description": "GigGuard app downtime monitor + weekly auto-payout service",
-  "main": "index.js",
+  "main": "monitor_index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node monitor_index.js",
+    "dev": "nodemon monitor_index.js"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
