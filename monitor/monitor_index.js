@@ -329,4 +329,6 @@ console.log(`   Monitoring ${APPS.length} apps:`);
 APPS.forEach(a => console.log(`   - ${a.label}: ${a.url}`));
 
 // Run an immediate ping on startup so we don't wait a full hour
-runHourlyPing().catch(console.error);
+runHourlyPing()
+  .then(() => runWeeklyPayout())
+  .catch(console.error);
