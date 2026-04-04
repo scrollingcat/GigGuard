@@ -15,9 +15,9 @@ import { verifyWeatherClaim, fetchWeatherByLocation } from '../utils/verifyWeath
 const EVENT_TYPES = [
   { id: 'weather',    label: 'Extreme weather',              icon: '🌧' },
   { id: 'app_outage', label: 'Delivery app was down',        icon: '📵' },
-  { id: 'network',    label: 'Internet / network outage',    icon: '📶' },
-  { id: 'power',      label: 'City power outage',            icon: '⚡' },
-  { id: 'social',     label: 'Curfew / strike / road block', icon: '🚧' },
+  { id: 'network',    label: 'Internet / network outage (Coming Soon)',    icon: '📶' },
+  { id: 'power',      label: 'City power outage (Coming Soon)',            icon: '⚡' },
+  { id: 'social',     label: 'Curfew / strike / road block (Coming Soon)', icon: '🚧' },
 ];
 
 const WEATHER_SUBTYPES = [
