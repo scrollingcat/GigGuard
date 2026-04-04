@@ -5,11 +5,11 @@
  *
  * What it does:
  * 1. Every hour  → pings all 5 delivery apps, logs status to Firestore
- * 2. Every Sunday 11:55pm → adjusts each worker's premiumModifier based on
- *    weekly claims count (+0.1 if ≥2 claims, −0.05 otherwise, range [1.0, 1.5])
- * 3. Every Sunday 11:59pm → scans all workers with Standard/Premium plans,
+ * 2. Every Sunday 11:55pm → scans all workers with Standard/Premium plans,
  *    calculates payout based on downtime during their shift hours,
  *    auto-creates approved claims in Firestore
+ * 3. Every Sunday 11:59pm → adjusts each worker's premiumModifier based on
+ *    weekly claims count (+0.1 if ≥2 claims, −0.05 otherwise, range [1.0, 1.5])
  *
  * Payout rules:
  * - ₹30 per hour of downtime during worker's active shift
@@ -388,28 +388,28 @@ cron.schedule('0 * * * *', async () => {
   catch (err) { console.error('Hourly ping failed:', err); }
 });
 
-// Every Sunday at 11:55pm — adjust premium modifiers before payout
+// Every Sunday at 11:55pm — run weekly payout
 cron.schedule('55 23 * * 0', async () => {
-  try { await runWeeklyModifierUpdate(); }
-  catch (err) { console.error('Weekly modifier update failed:', err); }
-});
-
-// Every Sunday at 11:59pm — run weekly payout
-cron.schedule('59 23 * * 0', async () => {
   try { await runWeeklyPayout(); }
   catch (err) { console.error('Weekly payout failed:', err); }
+});
+
+// Every Sunday at 11:59pm — adjust premium modifiers after payout
+cron.schedule('59 23 * * 0', async () => {
+  try { await runWeeklyModifierUpdate(); }
+  catch (err) { console.error('Weekly modifier update failed:', err); }
 });
 
 // ─── STARTUP ─────────────────────────────────────────────────────────────────
 console.log('🚀 GigGuard Monitor started');
 console.log('   Hourly ping: every hour at :00');
-console.log('   Weekly modifier update: every Sunday at 11:55pm');
-console.log('   Weekly payout: every Sunday at 11:59pm');
+console.log('   Weekly payout: every Sunday at 11:55pm');
+console.log('   Weekly modifier update: every Sunday at 11:59pm');
 console.log(`   Monitoring ${APPS.length} apps:`);
 APPS.forEach(a => console.log(`   - ${a.label}: ${a.url}`));
 
 // Run an immediate ping on startup so we don't wait a full hour
 runHourlyPing()
-  .then(() => runWeeklyModifierUpdate())
   .then(() => runWeeklyPayout())
+  .then(() => runWeeklyModifierUpdate())
   .catch(console.error);
