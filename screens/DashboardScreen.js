@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, RefreshControl
+  ScrollView, ActivityIndicator, RefreshControl, Alert
 } from 'react-native';
 import { db } from '../firebaseConfig';
 import {
   doc, getDoc, collection, query,
-  where, getDocs, orderBy
+  where, getDocs, orderBy, deleteDoc
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -83,6 +83,54 @@ export default function DashboardScreen({ route, navigation }) {
     setClaims(all);
   };
 
+  const handleDeletePolicy = (policyId) => {
+    Alert.alert(
+      'Delete policy',
+      'Are you sure you want to delete this policy? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'policies', policyId));
+              setPolicies(prev => prev.filter(p => p.id !== policyId));
+              // Refresh active policy
+              const now = new Date();
+              setPolicies(prev => {
+                const remaining = prev.filter(p => p.id !== policyId);
+                const active = remaining.find(p => p.status === 'active' && p.weekEnd?.toDate() >= now);
+                setActivePolicy(active || null);
+                return remaining;
+              });
+            } catch (e) {
+              Alert.alert('Error', e.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeleteClaim = (claimId) => {
+    Alert.alert(
+      'Delete claim',
+      'Are you sure you want to delete this claim? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'claims', claimId));
+              setClaims(prev => prev.filter(c => c.id !== claimId));
+            } catch (e) {
+              Alert.alert('Error', e.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleLogout = async () => {
     await AsyncStorage.removeItem('userId');
     navigation.replace('Login');
@@ -95,7 +143,7 @@ export default function DashboardScreen({ route, navigation }) {
   };
 
   const totalPaidOut = claims
-    .filter(c => c.status === 'paid')
+    .filter(c => c.status === 'approved' || c.status === 'paid')
     .reduce((sum, c) => sum + (c.payoutAmount || 0), 0);
 
   const totalPremiums = policies
@@ -211,7 +259,7 @@ export default function DashboardScreen({ route, navigation }) {
               <Text style={styles.empty}>No claims yet</Text>
             ) : (
               claims.slice(0, 3).map(claim => (
-                <ClaimRow key={claim.id} claim={claim} formatDate={formatDate} />
+                <ClaimRow key={claim.id} claim={claim} formatDate={formatDate} onDelete={handleDeleteClaim} />
               ))
             )}
 
@@ -242,7 +290,7 @@ export default function DashboardScreen({ route, navigation }) {
               <Text style={styles.empty}>You haven't filed any claims yet.</Text>
             ) : (
               claims.map(claim => (
-                <ClaimRow key={claim.id} claim={claim} formatDate={formatDate} expanded />
+                <ClaimRow key={claim.id} claim={claim} formatDate={formatDate} expanded onDelete={handleDeleteClaim} />
               ))
             )}
           </>
@@ -269,6 +317,9 @@ export default function DashboardScreen({ route, navigation }) {
                   <View style={styles.policyRowRight}>
                     <Text style={styles.policyRowPrice}>₹{policy.premiumPaid}</Text>
                     <Text style={styles.policyRowCoverage}>covers ₹{policy.coverageAmount}</Text>
+                    <TouchableOpacity onPress={() => handleDeletePolicy(policy.id)}>
+                      <Text style={styles.deleteBtn}>🗑</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))
@@ -287,7 +338,7 @@ export default function DashboardScreen({ route, navigation }) {
   );
 }
 
-function ClaimRow({ claim, formatDate, expanded }) {
+function ClaimRow({ claim, formatDate, expanded, onDelete }) {
   const statusStyle = STATUS_COLORS[claim.status] || STATUS_COLORS.submitted;
   return (
     <View style={styles.claimCard}>
@@ -295,10 +346,15 @@ function ClaimRow({ claim, formatDate, expanded }) {
         <Text style={styles.claimType}>
           {claim.eventType?.replace('_', ' ')}
         </Text>
-        <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-          <Text style={[styles.statusText, { color: statusStyle.text }]}>
-            {claim.status}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.statusText, { color: statusStyle.text }]}>
+              {claim.status}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => onDelete(claim.id)}>
+            <Text style={styles.deleteBtn}>🗑</Text>
+          </TouchableOpacity>
         </View>
       </View>
       <Text style={styles.claimDate}>{formatDate(claim.reportedAt)}</Text>
@@ -415,6 +471,7 @@ const styles = StyleSheet.create({
   claimAmountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   claimAmountLabel: { fontSize: 12, color: '#888' },
   claimAmount: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
+  deleteBtn: { fontSize: 16, padding: 2 },
   claimDesc: { fontSize: 12, color: '#666', marginTop: 8, fontStyle: 'italic' },
   claimScore: { fontSize: 11, color: '#3b82f6', marginTop: 6 },
 
