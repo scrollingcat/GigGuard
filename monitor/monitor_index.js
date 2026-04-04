@@ -108,6 +108,7 @@ async function pingApp(app) {
 
 // ─── HELPER: Check if an hour falls within a worker's shift ──────────────────
 function isHourInShift(hour, shiftPattern) {
+  return true;
   const shift = SHIFT_HOURS[shiftPattern];
   if (!shift) return false;
 
@@ -329,4 +330,6 @@ console.log(`   Monitoring ${APPS.length} apps:`);
 APPS.forEach(a => console.log(`   - ${a.label}: ${a.url}`));
 
 // Run an immediate ping on startup so we don't wait a full hour
-runHourlyPing().catch(console.error);
+runHourlyPing()
+  .then(() => runWeeklyPayout())
+  .catch(console.error);
