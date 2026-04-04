@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, ActivityIndicator, Alert
 } from 'react-native';
 import { db } from '../firebaseConfig';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 const PLANS = [
   {
@@ -41,6 +41,17 @@ export default function PolicyScreen({ route, navigation }) {
   const { userId } = route.params;
   const [selected, setSelected] = useState('standard');
   const [loading, setLoading] = useState(false);
+  const [modifier, setModifier] = useState(1.0);
+
+  useEffect(() => {
+    getDoc(doc(db, 'workers', userId)).then(snap => {
+      if (snap.exists()) {
+        setModifier(snap.data().premiumModifier || 1.0);
+      }
+    });
+  }, [userId]);
+
+  const adjustedPrice = (basePrice) => Math.round(basePrice * modifier);
 
   const getWeekRange = () => {
     const now = new Date();
@@ -56,9 +67,10 @@ export default function PolicyScreen({ route, navigation }) {
 
   const handlePurchase = async () => {
     const plan = PLANS.find(p => p.id === selected);
+    const finalPrice = adjustedPrice(plan.price);
     Alert.alert(
       'Confirm purchase',
-      `Buy ${plan.name} plan for ₹${plan.price} this week?\nCoverage up to ₹${plan.coverage}`,
+      `Buy ${plan.name} plan for ₹${finalPrice} this week?\nCoverage up to ₹${plan.coverage}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -70,12 +82,13 @@ export default function PolicyScreen({ route, navigation }) {
                 workerId: userId,
                 planId: plan.id,
                 planName: plan.name,
-                premiumPaid: plan.price,
+                premiumPaid: finalPrice,
                 coverageAmount: plan.coverage,
                 coveredEvents: plan.events,
                 weekStart: weekStart,
                 weekEnd: weekEnd,
                 status: 'active',
+                premiumModifierApplied: modifier,
                 createdAt: serverTimestamp(),
               });
               Alert.alert(
@@ -102,40 +115,54 @@ export default function PolicyScreen({ route, navigation }) {
       <Text style={styles.title}>Choose a plan</Text>
       <Text style={styles.subtitle}>Coverage resets every Monday</Text>
 
-      {PLANS.map(plan => (
-        <TouchableOpacity
-          key={plan.id}
-          style={[
-            styles.card,
-            selected === plan.id && { borderColor: plan.color, borderWidth: 2 }
-          ]}
-          onPress={() => setSelected(plan.id)}
-        >
-          {plan.recommended && (
-            <View style={[styles.badge, { backgroundColor: plan.color }]}>
-              <Text style={styles.badgeText}>Most popular</Text>
-            </View>
-          )}
+      {modifier > 1.0 && (
+        <View style={styles.modifierBanner}>
+          <Text style={styles.modifierBannerText}>
+            Prices adjusted for recent platform activity ({modifier.toFixed(2)}x)
+          </Text>
+        </View>
+      )}
 
-          <View style={styles.cardHeader}>
-            <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
-            <View>
-              <Text style={styles.price}>₹{plan.price}<Text style={styles.perWeek}>/week</Text></Text>
-            </View>
-          </View>
-
-          <Text style={styles.coverage}>Up to ₹{plan.coverage} coverage</Text>
-          <Text style={styles.description}>{plan.description}</Text>
-
-          <View style={styles.eventRow}>
-            {plan.events.map(e => (
-              <View key={e} style={styles.eventChip}>
-                <Text style={styles.eventText}>{e.replace('_', ' ')}</Text>
+      {PLANS.map(plan => {
+        const price = adjustedPrice(plan.price);
+        return (
+          <TouchableOpacity
+            key={plan.id}
+            style={[
+              styles.card,
+              selected === plan.id && { borderColor: plan.color, borderWidth: 2 }
+            ]}
+            onPress={() => setSelected(plan.id)}
+          >
+            {plan.recommended && (
+              <View style={[styles.badge, { backgroundColor: plan.color }]}>
+                <Text style={styles.badgeText}>Most popular</Text>
               </View>
-            ))}
-          </View>
-        </TouchableOpacity>
-      ))}
+            )}
+
+            <View style={styles.cardHeader}>
+              <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.price}>₹{price}<Text style={styles.perWeek}>/week</Text></Text>
+                {modifier > 1.0 && (
+                  <Text style={styles.basePrice}>Base ₹{plan.price}</Text>
+                )}
+              </View>
+            </View>
+
+            <Text style={styles.coverage}>Up to ₹{plan.coverage} coverage</Text>
+            <Text style={styles.description}>{plan.description}</Text>
+
+            <View style={styles.eventRow}>
+              {plan.events.map(e => (
+                <View key={e} style={styles.eventChip}>
+                  <Text style={styles.eventText}>{e.replace('_', ' ')}</Text>
+                </View>
+              ))}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
 
       <TouchableOpacity
         style={styles.button}
@@ -146,7 +173,7 @@ export default function PolicyScreen({ route, navigation }) {
           ? <ActivityIndicator color="#fff" />
           : <Text style={styles.buttonText}>
               Buy {PLANS.find(p => p.id === selected)?.name} plan —
-              ₹{PLANS.find(p => p.id === selected)?.price}
+              ₹{adjustedPrice(PLANS.find(p => p.id === selected)?.price)}
             </Text>
         }
       </TouchableOpacity>
@@ -218,6 +245,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '400',
     color: '#888',
+  },
+  basePrice: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textDecorationLine: 'line-through',
+    marginTop: 2,
+  },
+  modifierBanner: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  modifierBannerText: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   coverage: {
     fontSize: 13,
