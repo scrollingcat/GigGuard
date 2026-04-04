@@ -33,6 +33,7 @@
 const admin   = require('firebase-admin');
 const cron    = require('node-cron');
 const fetch   = require('node-fetch');
+const { runWeatherPremiumUpdate } = require('./weatherPremiumModifier');
 
 // ─── Firebase init ───────────────────────────────────────────────────────────
 // Set GOOGLE_APPLICATION_CREDENTIALS env var on Render to your service account JSON path
@@ -362,6 +363,13 @@ async function runWeeklyPayout() {
     await decayBatch.commit();
   }
   console.log(`  ✓ Modifier updates: ${processedWorkerIds.size} evaluated during payout, ${decayed} decayed (no payout).`);
+
+  // 5. Apply weather-forecast-based premium modifier adjustments
+  try {
+    await runWeatherPremiumUpdate(db, admin);
+  } catch (err) {
+    console.error('  ✗ Weather premium modifier update failed:', err);
+  }
 }
 
 // ─── HELPER: Get week number ──────────────────────────────────────────────────
