@@ -10,7 +10,7 @@ import {
   getDocs, doc, getDoc, serverTimestamp
 } from 'firebase/firestore';
 
-const OPENWEATHER_API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
+import { verifyWeatherClaim, fetchWeatherByLocation } from '../utils/verifyWeatherClaim';
 
 const EVENT_TYPES = [
   { id: 'weather',    label: 'Extreme weather',              icon: '🌧' },
@@ -26,49 +26,19 @@ const WEATHER_SUBTYPES = [
   { id: 'hailstorm',        label: 'Hailstorm',        icon: '🌨' },
 ];
 
-// ─── Fetch live weather for a pincode ────────────────────────────────────────
-async function fetchWeather(pincode) {
-  try {
-    const url = `https://api.openweathermap.org/data/2.5/weather?zip=${pincode},IN&appid=${OPENWEATHER_API_KEY}&units=metric`;
-    const res  = await fetch(url);
-    const data = await res.json();
-    if (data.cod !== 200) return null;
-
-    const weatherCode = data.weather[0].id;
-    const rain        = data.rain?.['1h'] || data.rain?.['3h'] || 0;
-    const windSpeed   = data.wind?.speed || 0;
-    const description = data.weather[0].description;
-
-    let severity = 'clear';
-    if (weatherCode >= 200 && weatherCode < 300) severity = 'extreme';
-    else if (weatherCode >= 300 && weatherCode < 400) severity = 'moderate';
-    else if (weatherCode >= 500 && weatherCode < 600) severity = rain > 10 ? 'extreme' : 'moderate';
-    else if (weatherCode >= 700 && weatherCode < 800) severity = 'moderate';
-    else if (weatherCode === 800) severity = 'clear';
-    else if (weatherCode > 800)   severity = 'low';
-
-    return { weatherCode, rain, windSpeed, description, severity };
-  } catch {
-    return null;
-  }
-}
-
 // ─── AI Scoring Logic ─────────────────────────────────────────────────────────
-function calculateAiScore({ eventType, weather, workerShift, recentClaimsCount, estimatedLoss, coverageAmount }) {
+function calculateAiScore({ eventType, weatherVerification, workerShift, recentClaimsCount, estimatedLoss, coverageAmount }) {
   let score   = 50;
   let reasons = [];
 
+  // 1. Weather verification using live location
   if (eventType === 'weather') {
-    if (!weather) {
-      score -= 10; reasons.push('Could not verify weather data');
-    } else if (weather.severity === 'extreme') {
-      score += 35; reasons.push(`Severe weather confirmed: ${weather.description}`);
-    } else if (weather.severity === 'moderate') {
-      score += 20; reasons.push(`Adverse weather confirmed: ${weather.description}`);
-    } else if (weather.severity === 'low') {
-      score -= 10; reasons.push('Mild weather — low disruption likelihood');
+    if (!weatherVerification) {
+      score -= 10; reasons.push('Could not verify weather at claim location');
     } else {
-      score -= 25; reasons.push('Clear skies detected — weather claim unlikely');
+      score += weatherVerification.scoreBoost;
+      score -= weatherVerification.scorePenalty;
+      reasons.push(weatherVerification.matchReason);
     }
   }
 
@@ -247,15 +217,35 @@ export default function ClaimScreen({ route, navigation }) {
                 reviewerNote:   '',
               });
 
-              // Step 3: Fetch worker profile
+              // Step 3: Fetch worker profile (for shift pattern only, no pincode needed)
               setLoadingStatus('Fetching worker profile...');
               const workerSnap = await getDoc(doc(db, 'workers', userId));
               const worker     = workerSnap.data();
-              const primaryPincode = worker?.zones?.[0];
 
-              // Step 4: Fetch live weather
-              setLoadingStatus('Checking weather data...');
-              const weather = primaryPincode ? await fetchWeather(primaryPincode) : null;
+              // Step 4: Verify weather using live location (weather claims only)
+              setLoadingStatus('Verifying weather at your location...');
+              let weatherVerification = null;
+              let actualWeather       = null;
+
+              if (eventType === 'weather' && location) {
+                weatherVerification = await verifyWeatherClaim(
+                  weatherSubtype,
+                  location.latitude,
+                  location.longitude
+                );
+                actualWeather = weatherVerification?.actualWeather || null;
+              } else if (eventType === 'weather' && !location) {
+                // Location was denied — fetch weather anyway as fallback using coords 0,0 won't work
+                // so we just skip verification and let AI score penalise it
+                weatherVerification = {
+                  verified:     false,
+                  confidence:   0,
+                  actualWeather: null,
+                  matchReason:  'Location not provided — weather could not be verified at claim site',
+                  scoreBoost:   0,
+                  scorePenalty: 15,
+                };
+              }
 
               // Step 5: Count recent claims (fraud check)
               setLoadingStatus('Running AI analysis...');
@@ -267,7 +257,7 @@ export default function ClaimScreen({ route, navigation }) {
               // Step 6: Calculate AI score
               const { score, reasons } = calculateAiScore({
                 eventType,
-                weather,
+                weatherVerification,
                 workerShift:    worker?.shiftPattern,
                 recentClaimsCount,
                 estimatedLoss:  Number(estimatedLoss),
@@ -298,11 +288,18 @@ export default function ClaimScreen({ route, navigation }) {
                 status,
                 payoutAmount,
                 reviewerNote,
-                weatherAtClaim: weather ? {
-                  description: weather.description,
-                  severity:    weather.severity,
-                  rain:        weather.rain,
-                  windSpeed:   weather.windSpeed,
+                weatherVerification: weatherVerification ? {
+                  verified:    weatherVerification.verified,
+                  confidence:  weatherVerification.confidence,
+                  matchReason: weatherVerification.matchReason,
+                } : null,
+                weatherAtClaim: actualWeather ? {
+                  description: actualWeather.description,
+                  temp:        actualWeather.temp,
+                  feelsLike:   actualWeather.feelsLike,
+                  rain:        actualWeather.rain,
+                  windSpeed:   actualWeather.windSpeed,
+                  cityName:    actualWeather.cityName,
                 } : null,
                 gradedAt: serverTimestamp(),
               });
