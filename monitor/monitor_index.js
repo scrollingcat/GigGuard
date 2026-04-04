@@ -5,9 +5,10 @@
  *
  * What it does:
  * 1. Every hour  → pings all 5 delivery apps, logs status to Firestore
- * 2. Every Sunday 11:59pm → scans all workers with Standard/Premium plans,
- *    calculates payout based on downtime during their shift hours,
- *    auto-creates approved claims in Firestore
+ * 2. Every Sunday 11:59pm → aggregates weekly downtime per app into
+ *    weekly_app_downtime, calculates payouts for eligible workers,
+ *    auto-creates approved claims, and adjusts each worker's
+ *    premiumModifier (+0.1 if >2 hrs downtime, −0.05 otherwise, range [1.0, 1.5])
  *
  * Payout rules:
  * - ₹30 per hour of downtime during worker's active shift
@@ -22,10 +23,11 @@
  * - night     → 9pm  to 6am (next day)
  *
  * Firestore collections used:
- * - app_downtime_logs  → hourly ping results per app
- * - workers            → read worker profiles
- * - policies           → read active policies (filter Standard/Premium)
- * - claims             → write auto-approved payout claims
+ * - app_downtime_logs   → hourly ping results per app
+ * - weekly_app_downtime → aggregated per-app downtime summary per week
+ * - workers             → read/update worker profiles + premiumModifier
+ * - policies            → read active policies (filter Standard/Premium)
+ * - claims              → write auto-approved payout claims
  */
 
 const admin   = require('firebase-admin');
@@ -63,6 +65,12 @@ const ELIGIBLE_PLANS = ['standard', 'premium'];
 
 // Payout per hour of downtime (₹)
 const PAYOUT_PER_HOUR = 30;
+
+// Premium modifier settings
+const MODIFIER_INCREMENT = 0.1;
+const MODIFIER_DECAY     = 0.05;
+const MODIFIER_MIN       = 1.0;
+const MODIFIER_MAX       = 1.5;
 
 // Shift hours [start, end] in 24h — end is exclusive
 const SHIFT_HOURS = {
@@ -185,14 +193,43 @@ async function runWeeklyPayout() {
   const downtimeLogs = logsSnap.docs.map(d => d.data());
   console.log(`  Found ${downtimeLogs.length} downtime hours this week`);
 
+  // 2b. Aggregate per-app downtime and write to weekly_app_downtime
+  const appDowntimeMap = {};
+  for (const log of downtimeLogs) {
+    if (!appDowntimeMap[log.appId]) {
+      appDowntimeMap[log.appId] = { appLabel: log.appLabel, hours: 0, byDate: {} };
+    }
+    appDowntimeMap[log.appId].hours++;
+    appDowntimeMap[log.appId].byDate[log.date] = (appDowntimeMap[log.appId].byDate[log.date] || 0) + 1;
+  }
+
+  const summaryBatch = db.batch();
+  const weekRange = `${weekDates[0]} to ${weekDates[6]}`;
+  for (const [appId, data] of Object.entries(appDowntimeMap)) {
+    const docId = `${appId}_week${weekNum}`;
+    summaryBatch.set(db.collection('weekly_app_downtime').doc(docId), {
+      appId,
+      appLabel:           data.appLabel,
+      weekNumber:         weekNum,
+      weekRange,
+      totalDowntimeHours: data.hours,
+      downtimeByDate:     data.byDate,
+      createdAt:          admin.firestore.Timestamp.now(),
+    });
+    console.log(`  📊 ${data.appLabel}: ${data.hours} hr(s) down this week`);
+  }
+  await summaryBatch.commit();
+  console.log(`  ✓ Weekly downtime summary saved for ${Object.keys(appDowntimeMap).length} app(s)`);
+
   if (downtimeLogs.length === 0) {
     console.log('  No downtime recorded this week. No payouts needed.');
     return;
   }
 
-  // 3. For each eligible policy, calculate payout
+  // 3. For each eligible policy, calculate payout and update modifier
   const batch  = db.batch();
   let payoutsCreated = 0;
+  const processedWorkerIds = new Set();
 
   for (const policy of eligiblePolicies) {
     const workerId = policy.workerId;
@@ -278,11 +315,53 @@ async function runWeeklyPayout() {
       updatedAt:    admin.firestore.Timestamp.now(),
     });
 
+    // Update premium modifier based on downtime hours
+    const currentMod = worker.premiumModifier || MODIFIER_MIN;
+    let newMod;
+    if (hoursDown > 2) {
+      newMod = Math.min(currentMod + MODIFIER_INCREMENT, MODIFIER_MAX);
+    } else {
+      newMod = Math.max(currentMod - MODIFIER_DECAY, MODIFIER_MIN);
+    }
+    newMod = Math.round(newMod * 100) / 100;
+
+    if (newMod !== currentMod) {
+      const dir = newMod > currentMod ? '↑' : '↓';
+      console.log(`    ${dir} Modifier: ${currentMod.toFixed(2)} → ${newMod.toFixed(2)} (${hoursDown} hrs down)`);
+      batch.update(workerRef, { premiumModifier: newMod });
+    }
+
+    processedWorkerIds.add(workerId);
     payoutsCreated++;
   }
 
   await batch.commit();
   console.log(`\n  ✓ Weekly payout complete. ${payoutsCreated} claims auto-created.`);
+
+  // 4. Decay modifier for workers who had no payout this week (good week)
+  const allWorkersSnap = await db.collection('workers').get();
+  const decayBatch = db.batch();
+  let decayed = 0;
+
+  for (const wDoc of allWorkersSnap.docs) {
+    if (processedWorkerIds.has(wDoc.id)) continue;
+    const w = wDoc.data();
+    const currentMod = w.premiumModifier || MODIFIER_MIN;
+    if (currentMod <= MODIFIER_MIN) continue;
+
+    const newMod = Math.round(Math.max(currentMod - MODIFIER_DECAY, MODIFIER_MIN) * 100) / 100;
+    console.log(`  ↓ ${w.name}: ${currentMod.toFixed(2)} → ${newMod.toFixed(2)} (no payout)`);
+    decayBatch.update(db.collection('workers').doc(wDoc.id), {
+      premiumModifier: newMod,
+      updatedAt: admin.firestore.Timestamp.now(),
+    });
+    decayed++;
+  }
+
+  if (decayed > 0) {
+    await decayBatch.commit();
+  }
+  console.log(`  ✓ Modifier updates: ${processedWorkerIds.size} evaluated during payout, ${decayed} decayed (no payout).`);
 }
 
 // ─── HELPER: Get week number ──────────────────────────────────────────────────
@@ -316,7 +395,7 @@ cron.schedule('0 * * * *', async () => {
   catch (err) { console.error('Hourly ping failed:', err); }
 });
 
-// Every Sunday at 11:59pm — run weekly payout
+// Every Sunday at 11:59pm — run weekly payout (includes modifier updates)
 cron.schedule('59 23 * * 0', async () => {
   try { await runWeeklyPayout(); }
   catch (err) { console.error('Weekly payout failed:', err); }
@@ -325,7 +404,7 @@ cron.schedule('59 23 * * 0', async () => {
 // ─── STARTUP ─────────────────────────────────────────────────────────────────
 console.log('🚀 GigGuard Monitor started');
 console.log('   Hourly ping: every hour at :00');
-console.log('   Weekly payout: every Sunday at 11:59pm');
+console.log('   Weekly payout + modifier update: every Sunday at 11:59pm');
 console.log(`   Monitoring ${APPS.length} apps:`);
 APPS.forEach(a => console.log(`   - ${a.label}: ${a.url}`));
 
