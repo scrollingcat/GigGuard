@@ -108,6 +108,7 @@ async function pingApp(app) {
 
 // ─── HELPER: Check if an hour falls within a worker's shift ──────────────────
 function isHourInShift(hour, shiftPattern) {
+  return true;
   const shift = SHIFT_HOURS[shiftPattern];
   if (!shift) return false;
 
