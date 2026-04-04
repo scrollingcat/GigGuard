@@ -10,7 +10,7 @@ import {
   getDocs, doc, getDoc, serverTimestamp
 } from 'firebase/firestore';
 
-const OPENWEATHER_API_KEY = '69fb4fdfcd9a514a85570ce51ec1f3d9';
+const OPENWEATHER_API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
 
 const EVENT_TYPES = [
   { id: 'weather',    label: 'Extreme weather',              icon: '🌧' },
