@@ -46,3 +46,16 @@ yarn-error.*
 
 # Firebase service account key
 serviceAccountKey.json
+
+
+# Agent tooling
+skills-lock.json
+# Expo local state
+.expo-shared/
+# Logs
+*.log
+# Test artifacts
+coverage/
+# Editor metadata (optional)
+.idea/
+.vscode/
